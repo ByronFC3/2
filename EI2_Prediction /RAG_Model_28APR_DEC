@@ -1,0 +1,546 @@
+!pip install langchain langchain_community langchain_openai openai faiss-cpu tiktoken pypdf gdown faiss-cpu sentence-transformers PyPDF2 gradio
+
+# Install requirements
+!pip install langchain faiss-cpu sentence-transformers openai tiktoken pypdf
+import os
+from langchain.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.vectorstores import FAISS
+from langchain.chat_models import ChatOpenAI
+from langchain.chains import RetrievalQA
+
+
+# === Step x: Load LLM via API ===
+from getpass import getpass
+import os
+os.environ['OPENAI_API_KEY'] = getpass('Enter your OpenAI API key: ')
+
+
+# === Step 1: Load Documents ===
+# Here I'm downloading my Proposals
+# === [0] Mount Google Drive
+from google.colab import drive # Import the drive object
+drive.mount('/content/drive')
+
+# Define Google Drive paths
+# Update approved_dir_path with the provided path
+funded_dir = "/content/drive/MyDrive/3.Google_Colab_repo_11Apr/Rejection"  # Path for approved proposals
+# Update rejected_dir_path with the provided path in the previous step
+rejected_dir = "/content/drive/MyDrive/3.Google_Colab_repo_11Apr/approved"  # Path for rejected proposals
+
+# Step 2: Load PDFs
+funded_docs = []
+rejected_docs = []
+
+def load_and_split_pdfs(directory_path):
+    all_texts = []
+    if not os.path.exists(directory_path):
+        print(f"Directory not found: {directory_path}")
+        return []
+
+    for filename in os.listdir(directory_path):
+        if filename.endswith('.pdf'):
+            full_path = os.path.join(directory_path, filename)
+            loader = PyPDFLoader(full_path)
+            pages = loader.load()
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+            docs = text_splitter.split_documents(pages)
+            all_texts.extend(docs)
+    return all_texts
+
+# Load documents
+funded_docs = load_and_split_pdfs(funded_dir)
+rejected_docs = load_and_split_pdfs(rejected_dir)
+
+# Combine them
+all_docs = funded_docs + rejected_docs
+
+print(f"Loaded {len(all_docs)} chunks from all proposals.")
+
+for file in os.listdir(funded_dir):
+    if file.endswith(".pdf"):
+        loader = PyPDFLoader(os.path.join(funded_dir, file))
+        funded_docs.extend(loader.load())
+
+for file in os.listdir(rejected_dir):
+    if file.endswith(".pdf"):
+        loader = PyPDFLoader(os.path.join(rejected_dir, file))
+        rejected_docs.extend(loader.load())
+
+# Combine documents
+all_docs = funded_docs + rejected_docs
+
+# === [2] Chunk Documents ===
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+all_chunks = text_splitter.split_documents(all_docs)
+
+# === [3] Embed and Store in FAISS ===
+embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+vectorstore = FAISS.from_documents(all_chunks, embedding_model)
+
+print(f"Funded grants loaded: {len(funded_docs)} chunks")
+print(f"Rejected grants loaded: {len(rejected_docs)} chunks")
+
+# Here I save my vectorstore
+from langchain.vectorstores import FAISS
+
+# Build FAISS vectorstore
+vectorstore = FAISS.from_documents(all_docs, embedding_model)
+
+# Save it to disk
+vectorstore.save_local("grant_faiss_index")
+
+print("FAISS vectorstore saved successfully!")
+
+# Step 2: Load PDFs
+funded_docs = []
+rejected_docs = []
+
+def load_and_split_pdfs(directory_path):
+    all_texts = []
+    if not os.path.exists(directory_path):
+        print(f"Directory not found: {directory_path}")
+        return []
+
+    for filename in os.listdir(directory_path):
+        if filename.endswith('.pdf'):
+            full_path = os.path.join(directory_path, filename)
+            loader = PyPDFLoader(full_path)
+            pages = loader.load()
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+            docs = text_splitter.split_documents(pages)
+            all_texts.extend(docs)
+    return all_texts
+
+# Load documents
+funded_docs = load_and_split_pdfs(funded_dir)
+rejected_docs = load_and_split_pdfs(rejected_dir)
+
+# Combine them
+all_docs = funded_docs + rejected_docs
+
+print(f"Loaded {len(all_docs)} chunks from all proposals.")
+
+for file in os.listdir(funded_dir):
+    if file.endswith(".pdf"):
+        loader = PyPDFLoader(os.path.join(funded_dir, file))
+        funded_docs.extend(loader.load())
+
+for file in os.listdir(rejected_dir):
+    if file.endswith(".pdf"):
+        loader = PyPDFLoader(os.path.join(rejected_dir, file))
+        rejected_docs.extend(loader.load())
+
+# Combine documents
+all_docs = funded_docs + rejected_docs
+
+# === [2] Chunk Documents ===
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+all_chunks = text_splitter.split_documents(all_docs)
+
+# === [3] Embed and Store in FAISS ===
+embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+vectorstore = FAISS.from_documents(all_chunks, embedding_model)
+
+from langchain.schema import Document
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+import os
+
+# Define your directories
+funded_dir = "/content/drive/MyDrive/3.Google_Colab_repo_11Apr/approved"
+rejected_dir = "/content/drive/MyDrive/3.Google_Colab_repo_11Apr/Rejection"
+
+# Splitter settings
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+
+# New function to load, split, and tag
+def load_split_and_tag(directory_path, label):
+    tagged_documents = []
+    if not os.path.exists(directory_path):
+        print(f"Directory not found: {directory_path}")
+        return []
+
+    for filename in os.listdir(directory_path):
+        if filename.endswith('.pdf'):
+            full_path = os.path.join(directory_path, filename)
+            print(f"Loading {full_path}")
+            loader = PyPDFLoader(full_path)
+            pages = loader.load()
+            splits = text_splitter.split_documents(pages)
+
+            # Tag each split with metadata
+            for chunk in splits:
+                tagged_chunk = Document(
+                    page_content=chunk.page_content,
+                    metadata={"label": label, "source": filename} # Add meta data
+                )
+                tagged_documents.append(tagged_chunk)
+
+    return tagged_documents
+
+# Load and tag documents
+funded_docs = load_split_and_tag(funded_dir, label="funded")
+rejected_docs = load_split_and_tag(rejected_dir, label="rejected")
+
+# Combine all
+all_docs = funded_docs + rejected_docs
+
+print(f"Funded chunks: {len(funded_docs)}")
+print(f"Rejected chunks: {len(rejected_docs)}")
+print(f"Total chunks loaded and tagged: {len(all_docs)}")
+
+
+# Create FAISS vectorstore
+vectorstore = FAISS.from_documents(all_docs, embedding_model)
+
+# Save it for future use
+vectorstore.save_local("grant_faiss_index_with_labels")
+
+print("FAISS vectorstore with funded/rejected tags saved successfully!")
+
+
+from langchain.vectorstores import FAISS
+from langchain.embeddings import HuggingFaceEmbeddings
+
+# Load the FAISS vectorstore with allow_dangerous_deserialization=True
+embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+vectorstore = FAISS.load_local("grant_faiss_index_with_labels", embedding_model, allow_dangerous_deserialization=True)
+
+# Define your queries
+queries = [
+    "What are the primary goals and objectives of this project?",
+    "Who are the key personnel or investigators involved?",
+    "What is the proposed timeline or project duration?",
+    "What is the total budget request for this grant?",
+    "How will the project be evaluated for success?",
+    "What are the potential broader impacts or benefits of this research?",
+    "What are the major risks or challenges associated with this project?",
+    "What prior work or preliminary data supports this proposal?",
+    "What are the specific activities or tasks that will be undertaken?",
+    "How does this project align with the funding agency's priorities?",
+    # Bonus queries:
+    "What are the common themes in funded proposals?",
+    "What are the frequent weaknesses in rejected proposals?",
+    "Show me examples of successful project descriptions.",
+    "What are the key differences between funded and rejected budgets?",
+        # Coaching-focused queries:
+    "What are the key elements of a strong project narrative?",
+    "What are some common mistakes to avoid in grant writing?",
+    "How can I make my project description more compelling?",
+    "What are some tips for writing a clear and concise budget justification?",
+    "How can I demonstrate the broader impacts of my research?",
+    "What are some effective strategies for addressing potential risks and challenges?",
+    "How can I highlight the qualifications and expertise of my project team?",
+    "What are some ways to showcase the innovation and significance of my research?",
+    "How can I tailor my proposal to the specific requirements of the funding agency?",
+    "Give me examples of strong statements of need from successful proposals.",
+    "How can I ensure my proposal is well-organized and easy to read?",
+    "What are the key elements of a strong project narrative?",
+    "What are some common mistakes to avoid in grant writing?",
+    "What are some resources or tools that can help me improve my grant writing skills?",
+    "Are there any specific areas where my proposal could be strengthened?", # Requires conversational memory
+    "Based on similar funded proposals, what suggestions do you have for improving my proposal?"  # Requires metadata and potentially conversational memory
+]
+
+# Iterate through the queries and perform similarity search
+for query in queries:
+    retrieved_docs = vectorstore.similarity_search(query, k=5)  # Retrieve top 5 documents
+
+    print(f"Query: {query}\n")
+
+    for doc in retrieved_docs:
+        print(f"  Label: {doc.metadata['label']}")
+        print(f"  Content: {doc.page_content[:300]}...\n")  # Print a snippet
+
+    print("-" * 50 + "\n") # Separator between query results
+
+# Code for creating and saving the FAISS vectorstore, along with the necessary imports and document loading/processing steps
+from langchain.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.vectorstores import FAISS
+from langchain.schema import Document
+import os
+
+# Define your directories
+funded_dir = "/content/drive/MyDrive/3.Google_Colab_repo_11Apr/approved"  # Replace with your funded proposals directory
+rejected_dir = "/content/drive/MyDrive/3.Google_Colab_repo_11Apr/Rejection"  # Replace with your rejected proposals directory
+
+# Splitter settings
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+
+# Function to load, split, and tag documents
+def load_split_and_tag(directory_path, label):
+    tagged_documents = []
+    if not os.path.exists(directory_path):
+        print(f"Directory not found: {directory_path}")
+        return []
+
+    for filename in os.listdir(directory_path):
+        if filename.endswith('.pdf'):
+            full_path = os.path.join(directory_path, filename)
+            print(f"Loading {full_path}")
+            loader = PyPDFLoader(full_path)
+            pages = loader.load()
+            splits = text_splitter.split_documents(pages)
+
+            # Tag each split with metadata
+            for chunk in splits:
+                tagged_chunk = Document(
+                    page_content=chunk.page_content,
+                    metadata={"label": label, "source": filename} # Add metadata
+                )
+                tagged_documents.append(tagged_chunk)
+
+    return tagged_documents
+
+# Load and tag documents
+funded_docs = load_split_and_tag(funded_dir, label="funded")
+rejected_docs = load_split_and_tag(rejected_dir, label="rejected")
+
+# Combine all documents
+all_docs = funded_docs + rejected_docs
+
+print(f"Funded chunks: {len(funded_docs)}")
+print(f"Rejected chunks: {len(rejected_docs)}")
+print(f"Total chunks loaded and tagged: {len(all_docs)}")
+
+# Initialize embedding model
+embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+
+# Create and save the FAISS vectorstore
+vectorstore = FAISS.from_documents(all_docs, embedding_model)
+vectorstore.save_local("grant_faiss_index_with_labels")  # Save to local disk
+
+print("FAISS vectorstore with funded/rejected tags saved successfully!")
+
+# Load my LLM
+# === Step 5: Load LLM via API ===
+from getpass import getpass
+import os
+os.environ['OPENAI_API_KEY'] = getpass('Enter your OpenAI API key: ')
+
+# In the cel where you initialize the 'llm' object:
+from langchain_openai import ChatOpenAI
+from getpass import getpass
+import os
+
+# Securely input your API key
+os.environ['OPENAI_API_KEY'] = getpass('Enter your OpenAI API key: ')
+llm = ChatOpenAI(openai_api_key=os.environ['OPENAI_API_KEY'], model_name="gpt-3.5-turbo", temperature=0)  # Pass API key here
+
+# === Step 6: Build RAG Chain ===
+from langchain.chains import RetrievalQA  # Import RetrievalQA here
+from langchain.vectorstores import FAISS
+from langchain.embeddings import HuggingFaceEmbeddings
+
+# Assuming 'grant_faiss_index' is the path where you saved your FAISS index
+embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+# Load the vectorstore with allow_dangerous_deserialization=True
+vectorstore = FAISS.load_local("grant_faiss_index", embedding_model, allow_dangerous_deserialization=True)
+retriever = vectorstore.as_retriever() # Create the retriever object here
+
+grant_rag_chain = RetrievalQA.from_chain_type(
+    llm=llm,
+    retriever=retriever,
+    return_source_documents=True  # Optional, for traceability
+)
+
+# Test Queries
+
+query = "If this was my first time writing a proposal, what advice would you give me?"
+result = grant_rag_chain({"query": query})
+print(result['result'])  # Print the answer
+print(result['source_documents'])  # Print the source documents (optional)
+
+query = "What are the primary goals of the Georgia AIM Project?"
+result = grant_rag_chain({"query": query})
+print(result['result'])  # Print the answer
+print(result['source_documents'])  # Print the source documents (optional)
+
+
+query = "What are the primary goals of the Georgia AIM Project?"
+result = grant_rag_chain({"query": query})
+print(result['result'])  # Print the answer
+print(result['source_documents'])  # Print the source documents (optional)
+
+query = "what is Georgia AIM?"
+result = grant_rag_chain({"query": query})
+print(result['result'])  # Print the answer
+print(result['source_documents'])  # Print the source documents (optional)
+
+query = "What is the I-6 Challenge Project Narrative about"
+result = grant_rag_chain({"query": query})
+print(result['result'])  # Print the answer
+print(result['source_documents'])  # Print the source documents (optional)
+
+query = "Who is the Executive Director from Medshape Solutions that submitted a letter of commitment?"
+result = grant_rag_chain({"query": query})
+print(result['result'])  # Print the answer
+print(result['source_documents'])  # Print the source documents (optional)
+
+query = "What is the core technology area of the Phase 1: EDA RTIH?"
+result = grant_rag_chain({"query": query})
+print(result['result'])  # Print the answer
+print(result['source_documents'])  # Print the source documents (optional)
+
+query = "What makes a successful proposal?"
+result = grant_rag_chain({"query": query})
+print(result['result'])  # Print the answer
+print(result['source_documents'])  # Print the source documents (optional)
+
+query = "Can you tell me the top five treads that winning proposals have?"
+result = grant_rag_chain({"query": query})
+print(result['result'])  # Print the answer
+print(result['source_documents'])  # Print the source documents (optional)
+
+query = "In or opinion, what makes a winning proposal?"
+result = grant_rag_chain({"query": query})
+print(result['result'])  # Print the answer
+print(result['source_documents'])  # Print the source documents (optional)
+
+query = "Can you summarize the Sir Henry Wellcome Postdoctoral Fellowship application?"
+result = grant_rag_chain({"query": query})
+print(result['result'])  # Print the answer
+print(result['source_documents'])  # Print the source documents (optional)
+
+query = "Why do most proposals fail?"
+result = grant_rag_chain({"query": query})
+print(result['result'])  # Print the answer
+print(result['source_documents'])  # Print the source documents (optional)
+
+query = "Can you tell me who the Auther of the NECESSARIES project is?"
+result = grant_rag_chain({"query": query})
+print(result['result'])  # Print the answer
+print(result['source_documents'])  # Print the source documents (optional)
+
+import os
+import gradio as gr
+import joblib
+from sklearn.linear_model import LogisticRegression
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.vectorstores import FAISS
+from langchain_openai import ChatOpenAI
+from langchain.chains import RetrievalQA
+from langchain.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.schema import Document
+
+# Dependencies: pip install gradio langchain langchain-openai faiss-cpu sentence-transformers openai tiktoken pypdf scikit-learn joblib
+
+# === Configuration ===
+os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
+embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+
+# Paths for proposal directories (update as needed)
+funded_dir = "/content/drive/MyDrive/3.Google_Colab_repo_11Apr/approved"
+rejected_dir = "/content/drive/MyDrive/3.Google_Colab_repo_11Apr/Rejection"
+MODEL_PATH = "proposal_classifier.pkl"
+
+# === Build Global Retriever ===
+global_vectorstore = FAISS.load_local(
+    "grant_faiss_index_with_labels", embedding_model,
+    allow_dangerous_deserialization=True
+)
+global_retriever = global_vectorstore.as_retriever()
+
+# === Initialize LLM ===
+llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)
+
+# === Utility for PDF-based retriever ===
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+def create_pdf_retriever(pdf_path):
+    loader = PyPDFLoader(pdf_path)
+    pages = loader.load()
+    docs = text_splitter.split_documents(pages)
+    tagged = [Document(page_content=d.page_content, metadata={}) for d in docs]
+    vs = FAISS.from_documents(tagged, embedding_model)
+    return vs.as_retriever()
+
+# === Train or Load Funding Classifier ===
+def load_labeled_docs():
+    def load_split_tag(dir_path, label):
+        tagged = []
+        for fname in os.listdir(dir_path):
+            if fname.endswith('.pdf'):
+                loader = PyPDFLoader(os.path.join(dir_path, fname))
+                pages = loader.load()
+                chunks = text_splitter.split_documents(pages)
+                for c in chunks:
+                    tagged.append(Document(page_content=c.page_content, metadata={"label":label}))
+        return tagged
+    funded = load_split_tag(funded_dir, "funded")
+    rejected = load_split_tag(rejected_dir, "rejected")
+    return funded + rejected
+
+if os.path.exists(MODEL_PATH):
+    classifier = joblib.load(MODEL_PATH)
+else:
+    docs = load_labeled_docs()
+    texts = [d.page_content for d in docs]
+    labels = [1 if d.metadata["label"]=="funded" else 0 for d in docs]
+    embeddings = embedding_model.embed_documents(texts)
+    clf = LogisticRegression(max_iter=1000)
+    clf.fit(embeddings, labels)
+    joblib.dump(clf, MODEL_PATH)
+    classifier = clf
+
+# === Functions ===
+def answer_question(question, pdf_file):
+    if not question.strip():
+        return "Please enter a question.", ""
+    retriever = create_pdf_retriever(pdf_file.name) if pdf_file else global_retriever
+    qa_chain = RetrievalQA.from_chain_type(
+        llm=llm,
+        retriever=retriever,
+        return_source_documents=True
+    )
+    result = qa_chain({"query": question})
+    answer = result["result"]
+    docs = result["source_documents"]
+    formatted = []
+    for doc in docs:
+        src = doc.metadata.get("source", "uploaded")
+        snippet = doc.page_content[:200].replace("\n", " ") + "..."
+        formatted.append(f"{src}: {snippet}")
+    return answer, "\n\n".join(formatted)
+
+def predict_likelihood(pdf_file):
+    if not pdf_file:
+        return "Upload a PDF file to predict likelihood."
+    loader = PyPDFLoader(pdf_file.name)
+    pages = loader.load()
+    chunks = text_splitter.split_documents(pages)
+    texts = [c.page_content for c in chunks]
+    embeddings = embedding_model.embed_documents(texts)
+    probs = classifier.predict_proba(embeddings)[:,1]
+    avg_prob = float(probs.mean())
+    return f"Estimated funding probability: {avg_prob*100:.2f}%"
+
+# Combined chat+predict function for UI
+def chat_and_predict(question, pdf_file):
+    answer, sources = answer_question(question, pdf_file)
+    likelihood = predict_likelihood(pdf_file) if pdf_file else ""
+    return answer, sources, likelihood
+
+# === Gradio Interface ===
+with gr.Blocks() as demo:
+    gr.Markdown("## Grant Proposal Reviewer & Success Predictor Chatbot")
+    with gr.Tab("Chat & Search"):
+        inp = gr.Textbox(label="Your Question", placeholder="Ask about proposals...")
+        pdf_q = gr.File(label="(Optional) Upload PDF for Chat", file_types=[".pdf"])
+        btn_q = gr.Button("Submit Query")
+        out_answer = gr.Textbox(label="AI Answer", interactive=False, lines=5)
+        out_sources = gr.Textbox(label="Source Snippets", interactive=False, lines=8)
+        out_prob_chat = gr.Textbox(label="Funding Likelihood", interactive=False)
+        btn_q.click(fn=chat_and_predict, inputs=[inp, pdf_q], outputs=[out_answer, out_sources, out_prob_chat])
+    with gr.Tab("Predict Funding"):
+        pdf_p = gr.File(label="Upload PDF to Predict Funding", file_types=[".pdf"])
+        btn_p = gr.Button("Predict Likelihood")
+        out_prob = gr.Textbox(label="Funding Probability", interactive=False)
+        btn_p.click(fn=predict_likelihood, inputs=pdf_p, outputs=out_prob)
+
+if __name__ == "__main__":
+    demo.launch(share=True)
+
